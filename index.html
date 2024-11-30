@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rhythm Platformer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/addons/p5.sound.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #1a1a1a;
+            color: #ffffff;
+            font-family: 'Arial', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            color: #ff6b6b;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        #game-container {
+            background-color: #2a2a2a;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        canvas {
+            border-radius: 5px;
+            display: block;
+        }
+
+        .instructions {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #2a2a2a;
+            border-radius: 10px;
+            line-height: 1.6;
+        }
+
+        .instructions h2 {
+            color: #4ecdc4;
+            margin-bottom: 15px;
+        }
+
+        .instructions ul {
+            list-style-position: inside;
+            margin-left: 20px;
+        }
+
+        .instructions li {
+            margin-bottom: 10px;
+            color: #dddddd;
+        }
+
+        .key {
+            background-color: #3a3a3a;
+            padding: 2px 8px;
+            border-radius: 4px;
+            color: #ffffff;
+            font-family: monospace;
+            margin: 0 4px;
+        }
+
+        footer {
+            margin-top: auto;
+            padding: 20px;
+            text-align: center;
+            color: #666666;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Rhythm Platformer</h1>
+    </header>
+
+    <div id="game-container"></div>
+
+    <div class="instructions">
+        <h2>How to Play</h2>
+        <ul>
+            <li>Press <span class="key">SPACE</span> to jump over obstacles</li>
+            <li>Time your jumps with the beat for better gameplay</li>
+            <li>Chain successful jumps to build up your combo multiplier</li>
+            <li>Avoid hitting the obstacles</li>
+            <li>Try to achieve the highest score possible!</li>
+        </ul>
+    </div>
+
+    <footer>
+        <p>A Rhythm-based Platformer Game</p>
+    </footer>
+
+    <script>
+    new p5(p => {
+        let player;
+        let obstacles = [];
+        let ground;
+        let score = 0;
+        let gameOver = false;
+        let beatInterval = 500;
+        let lastBeatTime = 0;
+        let combo = 0;
+        let particleSystem;
+        let spritesheet;
+        let platformSprites;
+        let bgMusic;
+
+        class Player {
+            constructor() {
+                this.x = 100;
+                this.y = 300;
+                this.velocity = 0;
+                this.gravity = 0.8;
+                this.jumpForce = -15;
+                this.size = 30;
+                this.isJumping = false;
+                this.frameCount = 0;
+                this.currentFrame = 0;
+                this.animationSpeed = 0.2;
+                this.spriteWidth = 32;
+                this.spriteHeight = 32;
+                this.totalFrames = 4;
+            }
+
+            getSprite() {
+                this.frameCount += this.animationSpeed;
+                this.currentFrame = Math.floor(this.frameCount) % this.totalFrames;
+                return {
+                    sx: this.currentFrame * this.spriteWidth,
+                    sy: 0,
+                    sw: this.spriteWidth,
+                    sh: this.spriteHeight
+                };
+            }
+
+            jump() {
+                if (!this.isJumping) {
+                    this.velocity = this.jumpForce;
+                    this.isJumping = true;
+                }
+            }
+
+            update() {
+                this.velocity += this.gravity;
+                this.y += this.velocity;
+
+                if (this.y > ground - this.size/2) {
+                    this.y = ground - this.size/2;
+                    this.velocity = 0;
+                    this.isJumping = false;
+                }
+
+                obstacles.forEach(obstacle => {
+                    const bounds = obstacle.getBounds();
+                    const playerBounds = this.getBounds();
+                    
+                    if (this.velocity > 0) {
+                        const wasAbovePlatform = playerBounds.bottom - this.velocity <= bounds.top;
+                        const isOverlappingX = playerBounds.right > bounds.left && playerBounds.left < bounds.right;
+                        
+                        if (wasAbovePlatform && isOverlappingX && playerBounds.bottom >= bounds.top) {
+                            this.y = bounds.top - this.size/2;
+                            this.velocity = 0;
+                            this.isJumping = false;
+                        }
+                    }
+                });
+            }
+
+            draw() {
+                const sprite = this.getSprite();
+                p.push();
+                p.translate(this.x - this.size/2, this.y - this.size/2);
+                p.imageMode(p.CORNER);
+                p.image(spritesheet, 0, 0, this.size, this.size,
+                    sprite.sx, sprite.sy, sprite.sw, sprite.sh);
+                p.pop();
+            }
+
+            getBounds() {
+                return {
+                    left: this.x - this.size/2,
+                    right: this.x + this.size/2,
+                    top: this.y - this.size/2,
+                    bottom: this.y + this.size/2
+                };
+            }
+        }
+
+        class Obstacle {
+            constructor() {
+                const difficultyMultiplier = 1 + (score / 1000);
+                const platformRoll = p.random();
+                const isNarrow = platformRoll < 0.3 * difficultyMultiplier;
+                const isExtraWide = platformRoll > 0.8;
+                
+                if (isNarrow) {
+                    this.width = p.random(20, 35);
+                } else if (isExtraWide) {
+                    this.width = p.random(120, 200);
+                } else {
+                    this.width = p.random(40, 80);
+                }
+
+                const maxJumpHeight = (player.jumpForce * player.jumpForce) / (2 * player.gravity);
+                
+                if (isNarrow) {
+                    this.height = p.random(40, maxJumpHeight * 0.6);
+                    this.sprite = platformSprites.narrow;
+                } else if (isExtraWide) {
+                    this.height = p.random(50, maxJumpHeight * 0.85);
+                    this.sprite = platformSprites.wide;
+                } else {
+                    this.height = p.random(45, maxJumpHeight * 0.75);
+                    this.sprite = platformSprites.normal;
+                }
+                
+                this.x = p.width;
+                this.y = ground - this.height;
+                const maxSpeedIncrease = 5;
+                const speedIncrease = Math.min(score / 500, maxSpeedIncrease);
+                this.speed = 7 + speedIncrease;
+                this.passed = false;
+            }
+
+            update() {
+                this.x -= this.speed;
+                
+                if (!this.passed && this.x < player.x) {
+                    this.passed = true;
+                    score += 10;
+                    combo++;
+                }
+            }
+
+            draw() {
+                p.image(this.sprite, this.x, this.y, this.width, this.height);
+            }
+
+            getBounds() {
+                return {
+                    left: this.x,
+                    right: this.x + this.width,
+                    top: this.y,
+                    bottom: this.y + this.height
+                };
+            }
+        }
+
+        function checkCollision(a, b) {
+            return !(a.right < b.left || a.left > b.right || 
+                    a.bottom < b.top || a.top > b.bottom);
+        }
+
+        p.preload = () => {
+            spritesheet = p.loadImage('./images/player.png');
+            platformSprites = {
+                narrow: p.loadImage('./images/narrow.png'),
+                normal: p.loadImage('./images/normal.png'),
+                wide: p.loadImage('./images/wide.png')
+            };
+            bgMusic = p.loadSound('./audio.mp3');
+        };
+
+        function initGame() {
+            ground = p.height - 50;
+            player = new Player();
+            obstacles = [];
+            score = 0;
+            combo = 0;
+            gameOver = false;
+
+            if (bgMusic) {
+                bgMusic.stop();
+                bgMusic.loop();
+            }
+
+            for (let i = 0; i < 3; i++) {
+                obstacles.push(new Obstacle());
+                obstacles[i].x = p.width + i * p.width/2;
+            }
+        }
+
+        p.setup = () => {
+            const canvas = p.createCanvas(800, 400);
+            canvas.parent('game-container');
+            initGame();
+        };
+
+        p.draw = () => {
+            if (!gameOver) {
+                p.background(30);
+                
+                p.fill(80);
+                p.noStroke();
+                p.rect(0, ground, p.width, p.height - ground);
+                
+                let currentTime = p.millis();
+                if (currentTime - lastBeatTime > beatInterval) {
+                    lastBeatTime = currentTime;
+                    p.background(40);
+                }
+                
+                player.update();
+                player.draw();
+                
+                for (let i = obstacles.length - 1; i >= 0; i--) {
+                    obstacles[i].update();
+                    obstacles[i].draw();
+                    
+                    const playerBounds = player.getBounds();
+                    const obstacleBounds = obstacles[i].getBounds();
+                    
+                    const isAboveObstacle = playerBounds.bottom - player.velocity <= obstacleBounds.top;
+                    if (!isAboveObstacle && checkCollision(playerBounds, obstacleBounds)) {
+                        gameOver = true;
+                        if (bgMusic) {
+                            bgMusic.stop();
+                        }
+                    }
+                    
+                    if (obstacles[i].x + obstacles[i].width < 0) {
+                        obstacles.splice(i, 1);
+                    }
+                }
+                
+                if (obstacles.length < 3) {
+                    let lastObstacle = obstacles[obstacles.length - 1];
+                    if (p.width - lastObstacle.x > p.width/2) {
+                        obstacles.push(new Obstacle());
+                    }
+                }
+                
+                p.fill(255);
+                p.textSize(24);
+                p.textAlign(p.LEFT);
+                p.text(`Score: ${score}`, 20, 40);
+                p.text(`Combo: ${combo}x`, 20, 70);
+                
+            } else {
+                p.background(30);
+                p.fill(255);
+                p.textSize(48);
+                p.textAlign(p.CENTER);
+                p.text('Game Over!', p.width/2, p.height/2);
+                p.textSize(24);
+                p.text(`Final Score: ${score}`, p.width/2, p.height/2 + 40);
+                p.text('Press SPACE to restart', p.width/2, p.height/2 + 80);
+            }
+        };
+
+        p.keyPressed = () => {
+            if (p.keyCode === 32) {
+                if (!gameOver) {
+                    player.jump();
+                } else {
+                    initGame();
+                }
+            }
+        };
+    });
+    </script>
+</body>
+</html>
