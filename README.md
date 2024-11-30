@@ -35,8 +35,8 @@ In this engaging platformer, players control a character that automatically runs
 ## Project Structure
 ```
 ./
-├── index.html           # Main game file with HTML, CSS, and JavaScript
-├── audio.mp3           # Background music file
+├── index.html           # Main game file with HTML, CSS, and JavaScript, coded 100% by claude.ai
+├── audio.mp3           # Background music file, made with suno.com
 └── images/            # Directory containing game sprites
     ├── player.png     # Character spritesheet (128x32 pixels, 4 frames)
     ├── narrow.png     # Narrow platform sprite
