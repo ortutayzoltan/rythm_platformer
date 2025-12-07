@@ -90,12 +90,76 @@
             text-align: center;
             color: #666666;
         }
+
+        #difficulty-menu {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(42, 42, 42, 0.95);
+            padding: 40px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+        }
+
+        #difficulty-menu h2 {
+            color: #ff6b6b;
+            margin-bottom: 30px;
+            font-size: 2em;
+        }
+
+        .difficulty-btn {
+            display: block;
+            width: 200px;
+            margin: 15px auto;
+            padding: 15px 30px;
+            font-size: 1.2em;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+        }
+
+        .difficulty-btn.easy {
+            background-color: #4ecdc4;
+            color: #1a1a1a;
+        }
+
+        .difficulty-btn.normal {
+            background-color: #ffd93d;
+            color: #1a1a1a;
+        }
+
+        .difficulty-btn.hard {
+            background-color: #ff6b6b;
+            color: #ffffff;
+        }
+
+        .difficulty-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
+        }
+
+        .hidden {
+            display: none;
+        }
     </style>
 </head>
 <body>
     <header>
         <h1>Rhythm Platformer</h1>
     </header>
+
+    <div id="difficulty-menu">
+        <h2>Select Difficulty</h2>
+        <button class="difficulty-btn easy" onclick="startGame('easy')">Easy</button>
+        <button class="difficulty-btn normal" onclick="startGame('normal')">Normal</button>
+        <button class="difficulty-btn hard" onclick="startGame('hard')">Hard</button>
+    </div>
 
     <div id="game-container"></div>
 
@@ -114,6 +178,18 @@
     </footer>
 
     <script>
+    let difficulty = 'hard';
+    let difficultySettings = {
+        easy: { baseSpeed: 4, speedIncrease: 15 },
+        normal: { baseSpeed: 5.5, speedIncrease: 20 },
+        hard: { baseSpeed: 7, speedIncrease: 25 }
+    };
+
+    function startGame(selectedDifficulty) {
+        difficulty = selectedDifficulty;
+        document.getElementById('difficulty-menu').classList.add('hidden');
+    }
+
     new p5(p => {
         let player;
         let obstacles = [];
@@ -127,6 +203,7 @@
         let platformSprites;
         let bgMusic;
         let backgroundImg;
+        let highScore = 0;
 
         class Player {
             constructor() {
@@ -176,11 +253,12 @@
                 obstacles.forEach(obstacle => {
                     const bounds = obstacle.getBounds();
                     const playerBounds = this.getBounds();
-                    
-                    if (this.velocity > 0) {
+
+                    // Only allow landing on platforms, not spikes
+                    if (this.velocity > 0 && !obstacle.isSpike) {
                         const wasAbovePlatform = playerBounds.bottom - this.velocity <= bounds.top;
                         const isOverlappingX = playerBounds.right > bounds.left && playerBounds.left < bounds.right;
-                        
+
                         if (wasAbovePlatform && isOverlappingX && playerBounds.bottom >= bounds.top) {
                             this.y = bounds.top - this.size/2;
                             this.velocity = 0;
@@ -213,36 +291,47 @@
         class Obstacle {
             constructor() {
                 const difficultyMultiplier = 1 + (obstaclesPassed / 50);
-                const platformRoll = p.random();
-                const isNarrow = platformRoll < 0.3 * difficultyMultiplier;
-                const isExtraWide = platformRoll > 0.8;
-                
-                if (isNarrow) {
-                    this.width = p.random(20, 35);
-                } else if (isExtraWide) {
-                    this.width = p.random(120, 200);
+                const obstacleType = p.random();
+
+                // 30% chance for spike
+                this.isSpike = obstacleType < 0.3;
+
+                if (this.isSpike) {
+                    this.width = p.random(30, 50);
+                    this.height = p.random(30, 50);
                 } else {
-                    this.width = p.random(40, 80);
+                    const platformRoll = p.random();
+                    const isNarrow = platformRoll < 0.3 * difficultyMultiplier;
+                    const isExtraWide = platformRoll > 0.8;
+
+                    if (isNarrow) {
+                        this.width = p.random(20, 35);
+                    } else if (isExtraWide) {
+                        this.width = p.random(120, 200);
+                    } else {
+                        this.width = p.random(40, 80);
+                    }
+
+                    const maxJumpHeight = (player.jumpForce * player.jumpForce) / (2 * player.gravity);
+
+                    if (isNarrow) {
+                        this.height = p.random(40, maxJumpHeight * 0.6);
+                        this.sprite = platformSprites.narrow;
+                    } else if (isExtraWide) {
+                        this.height = p.random(50, maxJumpHeight * 0.85);
+                        this.sprite = platformSprites.wide;
+                    } else {
+                        this.height = p.random(45, maxJumpHeight * 0.75);
+                        this.sprite = platformSprites.normal;
+                    }
                 }
 
-                const maxJumpHeight = (player.jumpForce * player.jumpForce) / (2 * player.gravity);
-                
-                if (isNarrow) {
-                    this.height = p.random(40, maxJumpHeight * 0.6);
-                    this.sprite = platformSprites.narrow;
-                } else if (isExtraWide) {
-                    this.height = p.random(50, maxJumpHeight * 0.85);
-                    this.sprite = platformSprites.wide;
-                } else {
-                    this.height = p.random(45, maxJumpHeight * 0.75);
-                    this.sprite = platformSprites.normal;
-                }
-                
                 this.x = p.width;
                 this.y = ground - this.height;
+                const settings = difficultySettings[difficulty];
                 const maxSpeedIncrease = 8;
-                const speedIncrease = Math.min(obstaclesPassed / 25, maxSpeedIncrease);
-                this.speed = 7 + speedIncrease;
+                const speedIncrease = Math.min(obstaclesPassed / settings.speedIncrease, maxSpeedIncrease);
+                this.speed = settings.baseSpeed + speedIncrease;
                 this.passed = false;
             }
 
@@ -262,7 +351,20 @@
             }
 
             draw() {
-                p.image(this.sprite, this.x, this.y, this.width, this.height);
+                if (this.isSpike) {
+                    // Draw triangle spike
+                    p.fill(200, 50, 50);
+                    p.stroke(150, 30, 30);
+                    p.strokeWeight(2);
+                    p.triangle(
+                        this.x, this.y + this.height,
+                        this.x + this.width / 2, this.y,
+                        this.x + this.width, this.y + this.height
+                    );
+                    p.noStroke();
+                } else {
+                    p.image(this.sprite, this.x, this.y, this.width, this.height);
+                }
             }
 
             getBounds() {
@@ -289,6 +391,12 @@
             };
             bgMusic = p.loadSound('./audio.mp3');
             backgroundImg = p.loadImage('./images/background.png');
+
+            // Load high score from localStorage
+            const savedScore = localStorage.getItem('rhythmPlatformerHighScore');
+            if (savedScore) {
+                highScore = parseInt(savedScore);
+            }
         };
 
         function initGame() {
@@ -348,18 +456,39 @@
                 for (let i = obstacles.length - 1; i >= 0; i--) {
                     obstacles[i].update();
                     obstacles[i].draw();
-                    
+
                     const playerBounds = player.getBounds();
                     const obstacleBounds = obstacles[i].getBounds();
-                    
+
+                    // For spikes, any collision is fatal
+                    // For platforms, only side collisions are fatal
                     const isAboveObstacle = playerBounds.bottom - player.velocity <= obstacleBounds.top;
-                    if (!isAboveObstacle && checkCollision(playerBounds, obstacleBounds)) {
-                        gameOver = true;
-                        if (bgMusic) {
-                            bgMusic.stop();
+                    if (obstacles[i].isSpike) {
+                        if (checkCollision(playerBounds, obstacleBounds)) {
+                            gameOver = true;
+                            if (bgMusic) {
+                                bgMusic.stop();
+                            }
+                            // Update high score
+                            if (obstaclesPassed > highScore) {
+                                highScore = obstaclesPassed;
+                                localStorage.setItem('rhythmPlatformerHighScore', highScore);
+                            }
+                        }
+                    } else {
+                        if (!isAboveObstacle && checkCollision(playerBounds, obstacleBounds)) {
+                            gameOver = true;
+                            if (bgMusic) {
+                                bgMusic.stop();
+                            }
+                            // Update high score
+                            if (obstaclesPassed > highScore) {
+                                highScore = obstaclesPassed;
+                                localStorage.setItem('rhythmPlatformerHighScore', highScore);
+                            }
                         }
                     }
-                    
+
                     if (obstacles[i].x + obstacles[i].width < 0) {
                         obstacles.splice(i, 1);
                     }
@@ -377,22 +506,100 @@
                 p.textAlign(p.LEFT);
                 p.text(`Obstacles: ${obstaclesPassed}/100`, 20, 40);
             } else if (gameWon) {
+                // Improved Win Screen
                 p.background(30);
+                p.image(backgroundImg, 0, 0, p.width, p.height);
+
+                // Semi-transparent overlay
+                p.fill(0, 0, 0, 180);
+                p.rect(0, 0, p.width, p.height);
+
+                // Animated glow effect
+                let glowSize = Math.sin(p.frameCount * 0.05) * 10 + 10;
+                p.fill(255, 215, 0, 100);
+                p.textSize(64 + glowSize);
+                p.textAlign(p.CENTER, p.CENTER);
+                p.text('YOU WON!', p.width/2, p.height/2 - 80);
+
+                // Main title
+                p.fill(255, 215, 0);
+                p.textSize(64);
+                p.text('YOU WON!', p.width/2, p.height/2 - 80);
+
+                // Stats box
+                p.fill(42, 42, 42, 220);
+                p.rect(p.width/2 - 150, p.height/2 - 20, 300, 100, 10);
+
+                // Score
+                p.fill(78, 205, 196);
+                p.textSize(20);
+                p.text('Score', p.width/2, p.height/2);
                 p.fill(255);
-                p.textSize(48);
-                p.textAlign(p.CENTER);
-                p.text('YOU WON!', p.width/2, p.height/2);
-                p.textSize(24);
-                p.text('Press SPACE to play again', p.width/2, p.height/2 + 80);
+                p.textSize(32);
+                p.text('100 / 100', p.width/2, p.height/2 + 30);
+
+                // High Score
+                p.fill(255, 107, 107);
+                p.textSize(18);
+                p.text(`High Score: ${highScore}`, p.width/2, p.height/2 + 60);
+
+                // Instructions
+                p.fill(200);
+                p.textSize(20);
+                p.text('Press SPACE to play again', p.width/2, p.height - 50);
             } else if (gameOver) {
+                // Improved Game Over Screen
                 p.background(30);
+                p.image(backgroundImg, 0, 0, p.width, p.height);
+
+                // Semi-transparent overlay
+                p.fill(0, 0, 0, 180);
+                p.rect(0, 0, p.width, p.height);
+
+                // Title with glow
+                let glowSize = Math.sin(p.frameCount * 0.05) * 5 + 5;
+                p.fill(255, 50, 50, 100);
+                p.textSize(56 + glowSize);
+                p.textAlign(p.CENTER, p.CENTER);
+                p.text('GAME OVER', p.width/2, p.height/2 - 80);
+
+                p.fill(255, 107, 107);
+                p.textSize(56);
+                p.text('GAME OVER', p.width/2, p.height/2 - 80);
+
+                // Stats box
+                p.fill(42, 42, 42, 220);
+                p.rect(p.width/2 - 150, p.height/2 - 20, 300, 120, 10);
+
+                // Your Score
+                p.fill(78, 205, 196);
+                p.textSize(20);
+                p.text('Your Score', p.width/2, p.height/2);
                 p.fill(255);
-                p.textSize(48);
-                p.textAlign(p.CENTER);
-                p.text('Game Over!', p.width/2, p.height/2);
-                p.textSize(24);
-                p.text(`Obstacles cleared: ${obstaclesPassed}`, p.width/2, p.height/2 + 40);
-                p.text('Press SPACE to restart', p.width/2, p.height/2 + 80);
+                p.textSize(42);
+                p.text(obstaclesPassed, p.width/2, p.height/2 + 35);
+
+                // High Score
+                const isNewRecord = obstaclesPassed > 0 && obstaclesPassed === highScore;
+                if (isNewRecord) {
+                    p.fill(255, 215, 0);
+                    p.textSize(16);
+                    p.text('NEW RECORD!', p.width/2, p.height/2 + 70);
+                } else {
+                    p.fill(255, 107, 107);
+                    p.textSize(18);
+                    p.text(`High Score: ${highScore}`, p.width/2, p.height/2 + 70);
+                }
+
+                // Difficulty display
+                p.fill(150);
+                p.textSize(14);
+                p.text(`Difficulty: ${difficulty.toUpperCase()}`, p.width/2, p.height/2 + 90);
+
+                // Instructions
+                p.fill(200);
+                p.textSize(20);
+                p.text('Press SPACE to restart', p.width/2, p.height - 50);
             }
         };
 
